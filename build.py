@@ -474,7 +474,9 @@ SAGE_PIP_PACKAGES = [
     'brewer2mpl',
     'ggplot',
     'periodictable'
-    'nltk'
+    'nltk',
+    'param',
+    'holoviews'
     ]
 
 SAGE_PIP_PACKAGES_ENV = {'clawpack':{'LDFLAGS':'-shared'}}
@@ -530,6 +532,7 @@ SAGE_OPTIONAL_PACKAGES = [
     'database_kohel',
     'database_symbolic_data',
     'dot2tex',
+    'gambit',
     'gap_packages',
     'gnuplotpy',
     'guppy',
@@ -641,6 +644,7 @@ class BuildSage(object):
         """
         Do everything to patch/update/install/enhance this Sage install.
         """
+        self.pull_smc_sage()
         self.unextend_sys_path()
         self.patch_sage_location()
         self.patch_banner()
@@ -677,6 +681,9 @@ class BuildSage(object):
         # FAILED:
         self.install_pymc()     # FAIL -- also "pip install pymc" fails.
         self.install_rstan()    # FAIL -- ERROR: dependency StanHeaders is not available for package rstan
+
+    def pull_smc_sage(self):
+        self.cmd("cd $SAGE_ROOT && git pull https://github.com/sagemathinc/smc-sage")
 
     def install_jinja2(self):
         self.cmd("pip install -U jinja2")
