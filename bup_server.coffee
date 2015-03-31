@@ -574,7 +574,7 @@ require('bup_server').global_client(database:x.d, cb:(e,c)->x.e=e;x.c=c)
 
 (x.c.register_server(host:"10.1.#{i}.5",dc:1,cb:console.log) for i in [1..7])
 
-(x.c.register_server(host:"10.3.#{i}.4",dc:1,cb:console.log) for i in [1..8])
+(x.c.register_server(host:"10.3.#{i}.5",dc:2,cb:console.log) for i in [1..8])
 
 x.c.push_servers_files(cb:console.log)
 
@@ -648,10 +648,11 @@ class GlobalProject
 
     # starts project if necessary, waits until it is running, and
     # gets the hostname port where the local hub is serving.
-    local_hub_address: (opts) =>
+    xxx_local_hub_address: (opts) =>
         opts = defaults opts,
             timeout : 30
             cb : required      # cb(err, {host:hostname, port:port, status:status, server_id:server_id})
+        dbg = (m) => winston.info("local_hub_address(#{@project_id}): #{m}")
         if @_local_hub_address_queue?
             @_local_hub_address_queue.push(opts.cb)
         else
@@ -663,11 +664,11 @@ class GlobalProject
                        cb(err, r)
                    delete @_local_hub_address_queue
 
-    _local_hub_address: (opts) =>
+    local_hub_address: (opts) =>
         opts = defaults opts,
-            timeout : 90
+            timeout : 30
             cb : required      # cb(err, {host:hostname, port:port, status:status, server_id:server_id})
-        dbg = (m) -> winston.info("local_hub_address(#{@project_id}): #{m}")
+        dbg = (m) => winston.info("local_hub_address(#{@project_id}): #{m}")
         dbg()
         server_id = undefined
         port      = undefined
@@ -730,7 +731,7 @@ class GlobalProject
 
 
     _update_project_settings: (cb) =>
-        dbg = (m) -> winston.debug("GlobalProject.update_project_settings(#{@project_id}): #{m}")
+        dbg = (m) => winston.debug("GlobalProject.update_project_settings(#{@project_id}): #{m}")
         dbg()
         @database.select_one
             table   : 'projects'
@@ -754,7 +755,7 @@ class GlobalProject
         opts = defaults opts,
             target : undefined
             cb     : undefined
-        dbg = (m) -> winston.debug("GlobalProject.start(#{@project_id}): #{m}")
+        dbg = (m) => winston.debug("GlobalProject.start(#{@project_id}): #{m}")
         dbg()
         state     = undefined
         project   = undefined
@@ -1503,7 +1504,7 @@ class GlobalProject
         opts = defaults opts,
             target : undefined
             cb     : undefined
-        dbg = (m) -> winston.debug("GlobalProject.move(#{@project_id}): #{m}")
+        dbg = (m) => winston.debug("GlobalProject.move(#{@project_id}): #{m}")
         dbg()
         if opts.target? and not misc.is_valid_uuid_string(opts.target)
             opts.cb?("target (='#{opts.target}') must be a v4 uuid")
@@ -1696,7 +1697,7 @@ class GlobalProject
         opts = defaults opts,
             cb : required
         hosts = []
-        dbg = (m) -> winston.debug("GlobalProject.get_hosts(#{@project_id}): #{m}")
+        dbg = (m) => winston.debug("GlobalProject.get_hosts(#{@project_id}): #{m}")
         async.series([
             (cb) =>
                 dbg("get last save info from database...")
@@ -1752,7 +1753,7 @@ class GlobalProject
         server_id = undefined
         project = undefined
         state = 'error'
-        dbg = (m) -> winston.debug("GlobalProject.get_local_state(#{@project_id}): #{m}")
+        dbg = (m) => winston.debug("GlobalProject.get_local_state(#{@project_id}): #{m}")
         async.series([
             (cb) =>
                 @get_location_pref (err, s) =>
@@ -2073,31 +2074,167 @@ class GlobalClient
             P = @_project_cache[project_id] = new GlobalProject(project_id, @)
         return P
 
-    move_projects_off_server: (opts) =>
+    move_running_projects_off_server: (opts) =>
         opts = defaults opts,
             server_id : required     # uuid of a host
-            cb        : undefined
+            limit     : 1            # number at once...
+            cb        : undefined    # cb(err, number of projects moved)
 
-        dbg = (m) -> winston.debug("move_projects_off_host: #{m}")
+        dbg = (m) => winston.debug("move_running_projects_off_server(#{opts.server_id}): #{m}")
         dbg()
         projects = undefined
         async.series([
             (cb) =>
+                dbg("determine projects currently running on server")
                 @projects_running_on_server
                     server_id : opts.server_id
                     cb        : (err, _projects) =>
                         projects = _projects
+                        dbg("there are #{projects.length} projects running on the server")
                         cb(err)
             (cb) =>
+                dbg("for each project, try to move it somewhere else")
+                i = 0
                 f = (project_id, cb) =>
+                    i += 1
+                    dbg("#{i}/#{projects.length}: moving project #{project_id}")
                     @get_project(project_id).move
                         cb : (err) =>
+                            dbg("done with #{project_id}; err=#{err}")
                             if err
-                                dbg("error moving #{project_id} -- ignored -- #{err}")
-                                cb()
-                async.map(projects, f, cb)
-        ], (err) => opts.cb?(err))
+                                dbg("ERROR moving #{project_id} -- #{err}")
+                            cb(err)
+                async.mapLimit(projects, opts.limit, f, cb)
+        ], (err) => opts.cb?(err, projects?.length))
 
+    decommission_server: (opts) =>
+        opts = defaults opts,
+            server_id : required
+            limit     : 10            # number of running projects to simultaneously move off server
+            cb        : undefined
+        dbg = (m) -> winston.debug("decommission_server(#{opts.server_id}): #{m}")
+        dbg()
+        projects = undefined
+        delete_bup_locations = []
+        delete_bup_last_saves = []
+
+        async.series([
+            (cb) =>
+                dbg("reduce chances of project startup on this server via the database")
+                @database.update
+                    table : 'storage_servers'
+                    set   :
+                        experimental : true
+                        health       : 0
+                    where :
+                        dummy : true
+                        server_id : opts.server_id
+                    cb : cb
+            (cb) =>
+                dbg("move running projects off the server")
+                @move_running_projects_off_server
+                    server_id : opts.server_id
+                    limit     : opts.limit
+                    cb        : cb
+            (cb) =>
+                dbg("move running projects off the server AGAIN")
+                @move_running_projects_off_server
+                    server_id : opts.server_id
+                    limit     : opts.limit
+                    cb        : cb
+            #(cb) =>
+            #    dbg("do a full repair, just in case -- this will ensure data is consistent")
+            #    @repair
+            #        limit  : 10
+            #        dryrun : false
+            #        cb     : cb
+            (cb) =>
+                dbg("move running projects off the server a final time, just to be sure")
+                @move_running_projects_off_server
+                    server_id : opts.server_id
+                    limit     : opts.limit
+                    cb        : (err, number) =>
+                        if err
+                            cb(err)
+                        else
+                            if number > 0
+                                cb("after multiple attempts still couldn't move everything running off -- suspicious; number = #{number}")
+                            else
+                                cb()
+            (cb) =>
+                dbg("load data from entire database about all projects (should take a few minutes)")
+                # TODO: this must eventually change to have some sort of index or
+                # something, since this doesn't scale.
+                t = misc.walltime()
+                @database.select
+                    table     : 'projects'
+                    columns   : ['project_id', 'bup_location', 'bup_last_save']
+                    objectify : true
+                    stream    : true
+                    #limit     : 1000  # for testing.
+                    cb        : (err, r) =>
+                        dbg("projects db dump too #{misc.walltime(t)} seconds.")
+                        if err
+                            cb(err)
+                        else
+                            dbg("got #{r.length} projects from database")
+                            projects = r
+                            cb()
+            (cb) =>
+                dbg("for every project on this server, remove the references to it in the database")
+                # figure out what we plan to do
+                for project in projects
+                    if project.bup_location == opts.server_id
+                        delete_bup_locations.push(project.project_id)
+                    if project.bup_last_save?[opts.server_id]
+                        delete_bup_last_saves.push(project.project_id)
+                dbg("#{delete_bup_locations.length} bup_locations")
+                dbg("#{delete_bup_last_saves.length} bup_last_saves")
+                cb()
+            (cb) =>
+                # TODO NO!!!!!
+                cb("no!!!")
+                dbg("delete #{delete_bup_locations.length} bup_locations, so projects last run on this server -- doing this in one very big query")
+                i = 0
+                f = (project_id, cb) =>
+                    i += 1
+                    if i % 50 == 0
+                        dbg("#{i}/#{delete_bup_locations.length}: deleting bup_location for project #{project_id}")
+                    @database.update
+                        table : 'projects'
+                        set   :
+                            bup_location : undefined
+                        where :
+                            project_id : project_id
+                        cb      : cb
+                async.mapLimit(delete_bup_locations, opts.limit, f, cb)
+            (cb) =>
+                dbg("delete #{delete_bup_last_saves.length} bup_last_saves (#{opts.limit} at once), so projects with one replica on this server")
+                i = 0
+                f = (project_id, cb) =>
+                    i += 1
+                    if i % 50 == 0
+                        dbg("#{i}/#{delete_bup_last_saves.length}: deleting bup_last_save for project #{project_id}")
+                    @database.cql
+                        query : 'UPDATE projects SET bup_last_save[?]=null WHERE project_id=?'
+                        vals  : [opts.server_id, project_id]
+                        cb    : cb
+                async.mapLimit(delete_bup_last_saves, opts.limit, f, cb)
+            (cb) =>
+                dbg("remove entry in the storage_servers table corresponding to this server")
+                @database.delete
+                    table : 'storage_servers'
+                    where :
+                        server_id : opts.server_id
+                        dummy     : true
+                    cb : cb
+        ], (err) =>
+            if err
+                dbg("something bad happened -- #{err}")
+            else
+                dbg("YES!  We have successfully decommissioned the server with server_id #{opts.server_id}.  You can turn it off and forget about it.")
+            opts.cb?(err)
+        )
 
     projects_running_on_server: (opts) =>
         opts = defaults opts,
@@ -2133,7 +2270,7 @@ class GlobalClient
 
 
     _update: (cb) =>
-        dbg = (m) -> winston.debug("GlobalClient._update: #{m}")
+        dbg = (m) => winston.debug("GlobalClient._update: #{m}")
         #dbg("updating list of available storage servers...")
         @database.select
             table     : 'storage_servers'
@@ -2165,7 +2302,7 @@ class GlobalClient
         if not @servers?
             opts.cb?("@servers not yet initialized"); return
         console.log("starting...")
-        dbg = (m) -> winston.info("push_servers_files: #{m}")
+        dbg = (m) => winston.info("push_servers_files: #{m}")
         dbg('starting... logged')
         errors = {}
         file = "#{DATA}/bup_servers"
@@ -2214,7 +2351,7 @@ class GlobalClient
             experimental : false   # if true, don't allocate new projects here
             timeout      : 30
             cb     : undefined
-        dbg = (m) -> winston.debug("GlobalClient.add_storage_server(#{opts.host}, #{opts.dc}): #{m}")
+        dbg = (m) => winston.debug("GlobalClient.add_storage_server(#{opts.host}, #{opts.dc}): #{m}")
         dbg("adding storage server to the database by grabbing server_id files, etc.")
         get_file = (path, cb) =>
             dbg("get_file: #{path}")
@@ -2626,6 +2763,31 @@ class GlobalClient
                 opts.cb(err, status)
             )
 
+    # As of March 28, 2015, this backup_project_locations function takes about 5 minutes.
+    # It is NOT scalable forever -- eventually node.js will run out of RAM, and we'll need
+    # to change this to truly use streaming.
+    backup_project_locations: (opts) =>
+        opts = defaults opts,
+            filename : undefined
+            cb       : required   # cb(err)
+        if not @servers?
+            opts.cb?("@servers not yet initialized"); return
+        if not opts.filename?
+            opts.filename = "backup_project_locations-#{new Date() - 0}.json"
+        dbg = (m) => winston.debug("backup_project_locations(filename:'#{opts.filename}'): #{m}")
+        dbg()
+        dbg("querying database....")
+        @database.select
+            table     : 'projects'
+            columns   : ['project_id', 'bup_location', 'bup_last_save']
+            objectify : true
+            stream    : true
+            cb        : (err, projects) =>
+                if err
+                    opts.cb(err)
+                else
+                    fs.writeFile(opts.filename, JSON.stringify(projects), opts.cb)
+
     ###
     For every project, check that the bup_last_save times are all the same,
     so that everything is fully replicated.
@@ -2641,7 +2803,7 @@ class GlobalClient
     ###
     repair: (opts) =>
         opts = defaults opts,
-            limit       : 5           # number to do in parallel
+            limit       : 20           # number to do in parallel
             destructive : false
             timeout     : TIMEOUT
             dryrun      : false       # if true, just return the projects that need sync; don't actually sync
@@ -2782,6 +2944,63 @@ class GlobalClient
                     opts.cb?(undefined, projects)
                 else
                     opts.cb?()
+        )
+
+    repair_bup_location: (opts) =>
+        opts = defaults opts,
+            limit       : 20           # number to do in parallel
+            timeout     : TIMEOUT
+            cb          : required    # cb(err, errors)
+        if not @servers?
+            opts.cb?("@servers not yet initialized"); return
+        dbg = (m) => winston.debug("GlobalClient.repair_bup_location(...): #{m}")
+        dbg()
+        projects = []
+        async.series([
+            (cb) =>
+                dbg("querying database....")
+                @database.select
+                    table     : 'projects'
+                    columns   : ['project_id', 'bup_location', 'bup_last_save']
+                    objectify : true
+                    stream    : true
+                    cb        : (err, r) =>
+                        if err
+                            cb(err)
+                        else
+                            dbg("got #{r.length} records")
+                            dbg("checking through each project to see which don't have bup_location set")
+                            i = 0
+                            for project in r
+                                if i%5000 == 0
+                                    dbg("checked #{i}/#{r.length} projects...")
+                                i += 1
+                                if project.bup_location or not project.bup_last_save? or misc.len(project.bup_last_save) == 0
+                                    continue
+                                bup_location = undefined
+                                newest_date = undefined
+                                for server_id, date of project.bup_last_save
+                                    if not bup_location or date >= newest_date
+                                        bup_location = server_id
+                                        newest_date = date
+                                projects.push({project_id:project.project_id, bup_location:bup_location})
+                            console.log(projects)
+                            cb()
+            (cb) =>
+                i = 0
+                f = (project, cb) =>
+                    i += 1
+                    if i%50 == 0
+                        console.log("#{i}/#{projects.length}")
+                    @database.update
+                        table : 'projects'
+                        set   :
+                            bup_location : project.bup_location
+                        where :
+                            project_id : project.project_id
+                        cb    : cb
+                async.mapLimit(projects, opts.limit, f, cb)
+        ], (err) => opts.cb?(err)
         )
 
     # I used this function to delete all deprecated content from columns in the projects table.
