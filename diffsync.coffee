@@ -127,6 +127,7 @@ class DiffSync extends EventEmitter  #not used here, but may be in derived class
         cb?(false, dmp.patch_apply(edits, doc)[0])
 
     _apply_edits_to_live: (edits, cb) =>
+        @_pre_apply_edits_to_live?()
         @_apply_edits  edits, @live, (err, result) =>
             if err
                 cb?(err); return
@@ -284,6 +285,7 @@ class CustomDiffSync extends DiffSync
         cb?(false, @opts.patch(edits, doc))
 
     _apply_edits_to_live: (edits, cb) =>
+        @_pre_apply_edits_to_live?()
         if @opts.patch_in_place?
             @opts.patch_in_place(edits, @live)
             cb?()
@@ -651,15 +653,11 @@ exports.uuids_of_linked_files = (doc) ->
 
 
 ###
-(c) William Stein, 2014
-
 Synchronized document-oriented database, based on differential synchronization.
-
 
 NOTE: The API is sort of like <http://hood.ie/#docs>, though I found that *after* I wrote this.
 The main difference is my syncdb doesn't use a database, instead using a file, and also it
 doesn't use localStorage.  HN discussion: <https://news.ycombinator.com/item?id=7767765>
-
 ###
 
 
@@ -982,6 +980,12 @@ class exports.SynchronizedDB extends EventEmitter
             @_set_doc_from_data()
 
 
+
+#---------------------------------------------------------------------------------------------------------
+# Support for editing history of a differential synchronized file
+#---------------------------------------------------------------------------------------------------------
+
+
 # Here's what a patch looks like
 #
 # [{"diffs":[[1,"{\"x\":5,\"y\":3}"]],"start1":0,"start2":0,"length1":0,"length2":13},...]
@@ -1014,5 +1018,23 @@ exports.invert_patch_in_place = (patch) ->
         for j in [0..patch[i].diffs.length-1]
             patch[i].diffs[j][0] = -patch[i].diffs[j][0]
     patch = patch.reverse()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 

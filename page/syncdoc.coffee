@@ -184,10 +184,11 @@ class DiffSyncHub
 class AbstractSynchronizedDoc extends EventEmitter
     constructor: (opts) ->
         @opts = defaults opts,
-            project_id : required
-            filename   : required
-            sync_interval : 1000    # no matter what, we won't send sync messages back to the server more frequently than this (in ms)
-            cb         : required   # cb(err) once doc has connected to hub first time and got session info; will in fact keep trying until success
+            project_id        : required
+            filename          : required
+            sync_interval     : 1000    # no matter what, we won't send sync messages back to the server more frequently than this (in ms)
+            revision_tracking : false     # if true, save every change in @.filename.sage-history
+            cb                : required   # cb(err) once doc has connected to hub first time and got session info; will in fact keep trying until success
 
         @project_id = @opts.project_id   # must also be set by derived classes that don't call this constructor!
         @filename   = @opts.filename
@@ -304,6 +305,9 @@ class AbstractSynchronizedDoc extends EventEmitter
                 @emit('sync')
 
                 s = @live()
+                if not s?
+                    cb?()  # doing sync with this object is over... unwind with grace.
+                    return
                 if s.copy?
                     s = s.copy()
                 @_last_sync = s    # What was the last successful sync with upstream.
@@ -442,6 +446,8 @@ class SynchronizedString extends AbstractSynchronizedDoc
                     # This initialiation is the first.
                     @_last_sync   = resp.content
                     reconnect = false
+                else
+                    reconnect = true
 
                 @dsync_server = new DiffSyncHub(@)
                 @dsync_client.connect(@dsync_server)
@@ -451,16 +457,34 @@ class SynchronizedString extends AbstractSynchronizedDoc
                 if reconnect
                     @emit('reconnect')
 
-                delete @_connect_lock
-                cb?()
+                @emit('connect')   # successful connection
 
-                # This patch application below must happen *AFTER* everything above, including
-                # the callback, since that fully initializes the document and sync mechanisms.
+                delete @_connect_lock
+
+                # This patch application below must happen *AFTER* everything above, since that
+                # fully initializes the document and sync mechanisms.
                 if synced_before
                     # applying missed patches to the new upstream version that we just got from the hub.
                     #console.log("now applying missed patches to the new upstream version that we just got from the hub: ", patch)
                     @_apply_patch_to_live(patch)
                     reconnect = true
+                cb?()
+
+                if @opts.revision_tracking
+                    #console.log("enabling revision tracking for #{@filename}")
+                    @call
+                        message : message.codemirror_revision_tracking
+                            session_uuid : @session_uuid
+                            enable       : true
+                        timeout : 120
+                        cb      : (err, resp) =>
+                            if resp.event == 'error'
+                                err = resp.error
+                            if err
+                                #alert_message(type:"error", message:)
+                                # usually this is harmless -- it could happen on reconnect or network is flakie.
+                                console.log("ERROR: ", "error enabling revision saving -- #{err} -- #{@filename}")
+
 
     disconnect_from_session: (cb) =>
         @_remove_listeners()
@@ -483,7 +507,7 @@ class SynchronizedDocument extends AbstractSynchronizedDoc
     constructor: (@editor, opts, cb) ->  # if given, cb will be called when done initializing.
         @opts = defaults opts,
             cursor_interval   : 1000
-            sync_interval     : 750     # never send sync messages up stream more often than this
+            sync_interval     : 750     # never send sync messages upstream more often than this
             revision_tracking : account.account_settings.settings.editor_settings.track_revisions   # if true, save every revision in @.filename.sage-history
         @project_id = @editor.project_id
         @filename   = @editor.filename
@@ -496,8 +520,8 @@ class SynchronizedDocument extends AbstractSynchronizedDoc
             #logname   : 'connect'
             #verbose   : true
 
-        @sync       = misc.retry_until_success_wrapper(f:@_sync, min_interval:@opts.sync_interval)#, logname:'sync')
-        @save       = misc.retry_until_success_wrapper(f:@_save, min_interval:2*@opts.sync_interval)#, logname:'save')
+        @sync       = misc.retry_until_success_wrapper(f:@_sync, max_delay : 5000, min_interval:@opts.sync_interval)#, logname:'sync')
+        @save       = misc.retry_until_success_wrapper(f:@_save, max_delay : 5000, min_interval:2*@opts.sync_interval)#, logname:'save')
 
 
         @editor.save = @save
@@ -623,18 +647,19 @@ class SynchronizedDocument extends AbstractSynchronizedDoc
                 @_add_listeners()
                 @editor.has_unsaved_changes(false) # TODO: start with no unsaved changes -- not tech. correct!!
 
-                @emit 'connect'    # successful connection
+                @emit('connect')   # successful connection
 
                 delete @_connect_lock
-                cb?()
 
-                # This patch application below must happen *AFTER* everything above, including
-                # the callback, since that fully initializes the document and sync mechanisms.
+                # This patch application below must happen *AFTER* everything above,
+                # since that fully initializes the document and sync mechanisms.
                 if synced_before
                     # applying missed patches to the new upstream version that we just got from the hub.
-                    #console.log("now applying missed patches to the new upstream version that we just got from the hub: ", patch)
+                    # console.log("now applying missed patches to the new upstream version that we just got from the hub: #{misc.to_json(patch)}")
                     @_apply_patch_to_live(patch)
                     @emit('sync')
+
+                cb?()
 
                 if @opts.revision_tracking
                     @call
@@ -2293,7 +2318,6 @@ class SynchronizedWorksheet extends SynchronizedDocument
                 @edit_cell
                     line : mark.find().from.line - 1
                     cm   : cm
-                return false
 
         return mark
 
