@@ -28,10 +28,50 @@
 ####################################################################
 
 assert = require('assert')
-
 winston = require('winston')
-
 net = require('net')
+fs = require('fs')
+misc = require 'misc'
+async = require('async')
+
+{walltime, defaults, required, to_json} = misc
+
+###
+Asynchronous JSON functionality: these are slower but block the main thread *less*.
+
+- to_json_async - convert object to JSON string without blocking.
+  This uses https://github.com/ckknight/async-json
+
+- from_json_async - convert JSON string to object/etc., without blocking,
+  though 2x times as slow as JSON.parse.  This uses https://github.com/bjouhier/i-json
+
+TESTS:
+
+m=require('misc_node');s=JSON.stringify({x:new Buffer(10000000).toString('hex')}); d=new Date(); m.from_json_async(string: s, chunk_size:10000, cb: (e, r) -> console.log(e, new Date() - d)); new Date() - d
+###
+
+###
+exports.to_json_async = (opts) ->
+    opts = defaults opts,
+        obj        : required    # Javascript object to convert to a JSON string
+        cb         : required    # cb(err, JSON string)
+
+ijson = require('i-json')
+exports.from_json_async = (opts) ->
+    opts = defaults opts,
+        string     : required   # string in JSON format
+        chunk_size : 50000      # size of chunks to parse -- affects how long this blocks the main thread
+        cb         : required
+    p = ijson.createParser()
+    s = opts.string
+    f = (i, cb) ->
+        #t = misc.mswalltime()
+        p.update(s.slice(i*opts.chunk_size, (i+1)*opts.chunk_size))
+        #console.log("update: #{misc.mswalltime(t)}")
+        setTimeout(cb, 0)
+    async.mapSeries [0...s.length/opts.chunk_size], f, (err) ->
+        opts.cb(err, p.result())
+###
 
 ######################################################################
 # Our TCP messaging system.  We send a message by first
@@ -52,11 +92,6 @@ net = require('net')
 # data is just a JSON-able object.  When type='blob', data={uuid:..., blob:...};
 # since every blob is tagged with a uuid.
 
-fs = require('fs')
-
-misc = require 'misc'
-
-{walltime, defaults, required, to_json} = misc
 
 message = require 'message'
 
@@ -283,6 +318,7 @@ exports.execute_code = execute_code = (opts) ->
         args       : []
         path       : undefined   # defaults to home directory; where code is executed from
         timeout    : 10          # timeout in *seconds*
+        ulimit_timeout : true    # if set, use ulimit to ensure a cpu timeout -- don't use when launching a daemon!
         err_on_exit: true        # if true, then a nonzero exit code will result in cb(error_message)
         max_output : undefined   # bound on size of stdout and stderr; further output ignored
         bash       : false       # if true, ignore args and evaluate command as a bash command
@@ -330,7 +366,7 @@ exports.execute_code = execute_code = (opts) ->
             if not opts.bash
                 c()
                 return
-            if opts.timeout?
+            if opts.timeout? and opts.ulimit_timeout
                 # This ensures that everything involved with this
                 # command really does die no matter what; it's
                 # better than killing from outside, since it gets
@@ -699,6 +735,10 @@ exports.is_file_readonly = (opts) ->
                 readonly = output.stdout.length == 0
                 opts.cb(undefined, readonly)
 
+# like in sage, a quick way to save/load JSON-able objects to disk; blocking and not compressed.
+exports.saveSync = (obj, filename) ->
+    fs.writeFileSync(filename, JSON.stringify(obj))
 
-
+exports.loadSync = (filename) ->
+    JSON.parse(fs.readFileSync(filename).toString())
 

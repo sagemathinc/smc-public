@@ -130,6 +130,7 @@ exports.min_object = (target, upper_bounds) ->
 # obj1.  For each property P of obj2 not specified in obj1, the
 # corresponding value obj1[P] is set (all in a new copy of obj1) to
 # be obj2[P].
+DEBUG = false
 exports.defaults = (obj1, obj2, allow_extra) ->
     if not obj1?
         obj1 = {}
@@ -146,7 +147,10 @@ exports.defaults = (obj1, obj2, allow_extra) ->
         err = "misc.defaults -- TypeError: function takes inputs as an object #{error()}"
         console.log(err)
         console.trace()
-        throw err
+        if DEBUG
+            throw err
+        else
+            return obj2
     r = {}
     for prop, val of obj2
         if obj1.hasOwnProperty(prop) and obj1[prop]?
@@ -154,14 +158,16 @@ exports.defaults = (obj1, obj2, allow_extra) ->
                 err = "misc.defaults -- TypeError: property '#{prop}' must be specified: #{error()}"
                 console.log(err)
                 console.trace()
-                throw err
+                if DEBUG
+                    throw err
             r[prop] = obj1[prop]
         else if obj2[prop]?  # only record not undefined properties
             if obj2[prop] == exports.defaults.required
                 err = "misc.defaults -- TypeError: property '#{prop}' must be specified: #{error()}"
                 console.log(err)
                 console.trace()
-                throw err
+                if DEBUG
+                    throw err
             else
                 r[prop] = obj2[prop]
     if not allow_extra
@@ -170,7 +176,8 @@ exports.defaults = (obj1, obj2, allow_extra) ->
                 err = "misc.defaults -- TypeError: got an unexpected argument '#{prop}' #{error()}"
                 console.log(err)
                 console.trace()
-                throw err
+                if DEBUG
+                    throw err
     return r
 
 # WARNING -- don't accidentally use this as a default:
@@ -219,7 +226,8 @@ exports.times_per_second = (f, max_time=5, max_loops=1000) ->
 exports.to_json = (x) ->
     JSON.stringify(x)
 
-# convert object x to a JSON string, removing any keys that have "pass" in them.
+# convert object x to a JSON string, removing any keys that have "pass" in them and
+# any values that are potentially big -- this is meant to only be used for loging.
 exports.to_safe_str = (x) ->
     obj = {}
     for key, value of x
@@ -233,7 +241,12 @@ exports.to_safe_str = (x) ->
         if sanitize
             obj[key] = '(unsafe)'
         else
-            obj[key] = x[key]
+            if typeof(value) == "object"
+                value = "[object]"  # many objects, e.g., buffers can block for seconds to JSON...
+            else if typeof(value) == "string"
+                value = exports.trunc(value,250) # long strings are not SAFE -- since JSON'ing them for logging blocks for seconds!
+            obj[key] = value
+
     x = exports.to_json(obj)
 
 # convert from a JSON string to Javascript
@@ -980,4 +993,17 @@ exports.remove_c_comments = (s) ->
         if i >= j
             return s
         s = s.slice(0, i) + s.slice(j+2)
+
+
+
+
+exports.date_to_snapshot_format = (d) ->
+    if not d?
+        d = 0
+    if typeof(d) == "number"
+        d = new Date(d)
+    s = d.toJSON()
+    s = s.replace('T','-').replace(/:/g, '')
+    i = s.lastIndexOf('.')
+    return s.slice(0,i)
 

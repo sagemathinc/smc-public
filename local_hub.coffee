@@ -150,11 +150,7 @@ init_info_json = () ->
     v = process.env['HOME'].split('/')
     project_id = v[v.length-1]
     username   = project_id.replace(/-/g,'')
-    host       = require('os').networkInterfaces().tun0?[0].address
-    if not host?  # some testing setup not on the vpn
-        host = require('os').networkInterfaces().eth1?[0].address
-        if not host?
-            host = 'localhost'
+    host       = require('os').networkInterfaces().eth0?[0].address
     base_url   = ''
     port       = 22
     INFO =
@@ -221,11 +217,12 @@ restart_console_server = (cb) ->   # cb(err)
         (cb) ->
             dbg("restart console server")
             misc_node.execute_code
-                command     : "console_server restart"
-                timeout     : 10
-                err_on_exit : true
-                bash        : true
-                cb          : cb
+                command        : "console_server restart"
+                timeout        : 10
+                ulimit_timeout : false   # very important -- so doesn't kill consoles after 10 seconds!
+                err_on_exit    : true
+                bash           : true
+                cb             : cb
         (cb) ->
             dbg("wait a little to see if #{port_file} appears, and if so read it and return port")
             f = (cb) ->
@@ -515,11 +512,12 @@ exports.restart_sage_server = restart_sage_server = (cb) ->
     _restarting_sage_server = true
     dbg("restarting the daemon")
     misc_node.execute_code
-        command     : "sage_server stop; sage_server start"
-        timeout     : 30
-        err_on_exit : true
-        bash        : true
-        cb          : (err) ->
+        command        : "sage_server stop; sage_server start"
+        timeout        : 30
+        ulimit_timeout : false   # very important -- so doesn't kill consoles after 30 seconds of cpu!
+        err_on_exit    : true
+        bash           : true
+        cb             : (err) ->
             _restarting_sage_server = false
             _restarted_sage_server = new Date()
             cb(err)
@@ -2171,7 +2169,8 @@ jupyter_port = (socket, mesg) ->
         args        : ['start']
         err_on_exit : true
         bash        : false
-        timeout     : 30
+        timeout     : 60
+        ulimit_timeout : false   # very important -- so doesn't kill consoles after 60 seconds cputime!
         cb          : (err, out) ->
             if not err
                 try
@@ -2203,6 +2202,9 @@ jupyter_port = (socket, mesg) ->
 ###############################################
 project_exec = (socket, mesg) ->
     winston.debug("project_exec")
+    if mesg.command == "ipython-notebook"
+        socket.write_mesg("json", message.error(id:mesg.id, error:"old client code -- you may not run ipython-notebook directly"))
+        return
     misc_node.execute_code
         command     : mesg.command
         args        : mesg.args
@@ -2399,7 +2401,7 @@ start_raw_server = (cb) ->
 
             # NOTE: It is critical to only listen on the host interface (not localhost), since otherwise other users
             # on the same VM could listen in.   We firewall connections from the other VM hosts above
-            # port 1024, so this is safe without authentication.  That said, I plan to add some sort of auth (?) just in case.
+            # port 1024, so this is safe without authentication.  TODO: should we add some sort of auth (?) just in case?
             raw_server.listen port, info.location.host, (err) ->
                 winston.info("err = #{err}")
                 if err
@@ -2410,36 +2412,6 @@ last_activity = undefined
 # Call this function to signal that there is activity.
 activity = () ->
     last_activity = misc.mswalltime()
-
-start_kill_monitor = (cb) ->
-    # Start a monitor that periodically checks for some sort of client-initiated hub activity.
-    # If there is none for program.timeout seconds, then all processes running as this user
-    # are killed (including this local hub, of course).
-    if not program.timeout or process.env['USER'].length != 32   # 32 = length of SMC accounts...
-        winston.info("Not setting kill monitor")
-        cb()
-        return
-
-    timeout = program.timeout*1000
-    winston.debug("Creating kill monitor to kill if idle for #{program.timeout} seconds")
-    activity()
-    kill_if_inactive = () ->
-        age = misc.mswalltime() - last_activity
-        winston.debug("kill_if_inactive: last activity #{age/1000} seconds ago")
-        if age >= timeout
-            # game over -- kill everything...
-            mesg = "Activity timeout hit: killing everything!"
-            console.log(mesg)
-            winston.debug(mesg)
-            misc_node.execute_code
-                command : "pkill"
-                args    : ['-9', '-u', process.env['USER']]
-                cb      : (err) ->
-                    # shouldn't get hit, since *everything* including this process, gets killed
-
-    # check every 30 seconds
-    setInterval(kill_if_inactive, 30000)
-    cb()
 
 # Truncate the ~/.sagemathcloud.log if it exceeds a certain length threshhold.
 SAGEMATHCLOUD_LOG_THRESH = 5000 # log grows to at most 50% more than this
@@ -2487,7 +2459,7 @@ start_log_truncate = (cb) ->
 
 # Start listening for connections on the socket.
 exports.start_server = start_server = () ->
-    async.series [start_log_truncate, start_kill_monitor, start_tcp_server, start_raw_server], (err) ->
+    async.series [start_log_truncate, start_tcp_server, start_raw_server], (err) ->
         if err
             winston.debug("Error starting a server -- #{err}")
         else
@@ -2503,7 +2475,6 @@ program.usage('[start/stop/restart/status] [options]')
     .option('--logfile [string]', 'write log to this file', String, abspath("#{DATA}/local_hub.log"))
     .option('--forever_logfile [string]', 'write forever log to this file', String, abspath("#{DATA}/forever_local_hub.log"))
     .option('--debug [string]', 'logging debug level (default: "debug"); "" for no debugging output)', String, 'debug')
-    .option('--timeout [number]', 'kill all processes if there is no activity for this many *seconds* (use 0 to disable, which is the default)', Number, 0)
     .parse(process.argv)
 
 if program._name.split('.')[0] == 'local_hub'

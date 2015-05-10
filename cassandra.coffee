@@ -31,10 +31,10 @@
 # Well, calling "select" is ok, but don't ever directly write
 # CQL statements.
 #
-# fs=require('fs'); a = new (require("cassandra").Salvus)(keyspace:'salvus', hosts:['10.1.1.2:9160'], username:'salvus', password:fs.readFileSync('data/secrets/cassandra/salvus').toString().trim(), cb:console.log)
-# fs=require('fs'); a = new (require("cassandra").Salvus)(keyspace:'salvus', hosts:['10.1.1.2:9160'], username:'hub', password:fs.readFileSync('data/secrets/cassandra/hub').toString().trim(), cb:console.log)
+# fs=require('fs'); a = new (require("cassandra").Salvus)(keyspace:'salvus', hosts:['10.1.1.2'], username:'salvus', password:fs.readFileSync('data/secrets/cassandra/salvus').toString().trim(), cb:console.log)
+# fs=require('fs'); a = new (require("cassandra").Salvus)(keyspace:'salvus', hosts:['10.1.1.2'], username:'hub', password:fs.readFileSync('data/secrets/cassandra/hub').toString().trim(), cb:console.log)
 #
-# fs=require('fs'); a = new (require("cassandra").Salvus)(keyspace:'salvus', hosts:['localhost:8403'], username:'salvus', password:fs.readFileSync('data/secrets/cassandra/salvus').toString().trim(), cb:console.log)
+# fs=require('fs'); a = new (require("cassandra").Salvus)(keyspace:'salvus', hosts:['localhost'], username:'salvus', password:fs.readFileSync('data/secrets/cassandra/salvus').toString().trim(), cb:console.log)
 #
 # a = new (require("cassandra").Salvus)(keyspace:'salvus', hosts:['localhost'], cb:console.log)
 #
@@ -438,23 +438,12 @@ class exports.Cassandra extends EventEmitter
 
     reconnect: (cb) =>
         winston.debug("reconnect to database server")
-        if not @conn? or not @conn.shutdown?
-            winston.debug("directly connecting")
-            @connect(cb)
-            return
-        winston.debug("reconnect to database server -- first shutting down")
-        @conn.shutdown (err) =>
-            winston.debug("reconnect to database server -- shutdown returned #{err}")
-            delete @conn
-            @connect(cb)
+        @connect(cb)
 
     connect: (cb) =>
         winston.debug("connect: connecting to the database server")
         console.log("connecting...")
         opts = @_opts
-        if @conn?
-            @conn.shutdown?()
-            delete @conn
         o =
             contactPoints         : opts.hosts
             keyspace              : opts.keyspace
@@ -466,7 +455,11 @@ class exports.Cassandra extends EventEmitter
                 connectTimeout    : opts.conn_timeout_ms
         if opts.username? and opts.password?
             o.authProvider = new cql.auth.PlainTextAuthProvider(opts.username, opts.password)
+         
+        if @conn?
+            old_conn = @conn 
         @conn = new Client(o)
+        old_conn?.shutdown?()
 
         if opts.verbose
             @conn.on 'log', (level, message) =>
@@ -501,7 +494,9 @@ class exports.Cassandra extends EventEmitter
                     x = val
                     op = '=='
                 else
-                    assert(val?, "val must be defined -- there's a bug somewhere: _where(#{to_json(where_key)}, #{to_json(vals)}, #{to_json(json)})")
+                    # DO **NOT** enable this except for very specific debugging, and then disable it.  The time to construct the
+                    # string below could be huge.  e.g., saving BLOBS = 25 seconds!
+                    # assert(val?, "val must be defined -- there's a bug somewhere: _where(#{to_json(where_key)}, #{to_json(vals)}, #{to_json(json)})")
                     x = val[op]
                 if x?
                     if key in json
@@ -1130,7 +1125,7 @@ class exports.Salvus extends exports.Cassandra
         @select
             table   : 'compute_servers'
             columns : ['host', 'score']
-            where   : {running:true, dummy:true}
+            where   : {running:true}
             allow_filtering : true
             cb      : (err, results) =>
                 if results.length == 0 and @keyspace == 'test'
@@ -2860,6 +2855,7 @@ class exports.Salvus extends exports.Cassandra
     #####################################
 
     # Get ssh address to connect to a given storage server in various ways.
+    # DEPRECATED
     storage_server_ssh: (opts) =>
         opts = defaults opts,
             server_id : required
@@ -2869,6 +2865,22 @@ class exports.Salvus extends exports.Cassandra
             consistency : 1
             where       :
                 dummy     : true
+                server_id : opts.server_id
+            columns     : ['ssh']
+            cb          : (err, r) =>
+                if err
+                    opts.cb(err)
+                else
+                    opts.cb(undefined, r[0])
+
+    compute_server_ssh: (opts) =>
+        opts = defaults opts,
+            server_id : required
+            cb        : required
+        @select_one
+            table       : 'compute_servers'
+            consistency : 1
+            where       :
                 server_id : opts.server_id
             columns     : ['ssh']
             cb          : (err, r) =>

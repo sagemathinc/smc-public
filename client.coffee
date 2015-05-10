@@ -1339,24 +1339,21 @@ class exports.Connection extends EventEmitter
 
     # Set a quota parameter for a given project.
     # As of now, only user in the admin group can make these changes.
-    project_set_quota: (opts) =>
+    project_set_quotas: (opts) =>
         opts = defaults opts,
             project_id : required
             memory     : undefined    # see message.coffee for the units, etc., for all these settings
             cpu_shares : undefined
             cores      : undefined
             disk       : undefined
-            scratch    : undefined
-            inode      : undefined
             mintime    : undefined
-            login_shell: undefined
             network    : undefined
             cb         : undefined
         cb = opts.cb
         delete opts.cb
 
         @call
-            message : message.project_set_quota(opts)
+            message : message.project_set_quotas(opts)
             cb      : (err, resp) =>
                 if err
                     cb?(err)
@@ -2103,22 +2100,6 @@ class exports.Connection extends EventEmitter
                 else
                     opts.cb(false, resp.state)
 
-    project_get_local_state: (opts) =>
-        opts = defaults opts,
-            project_id : required
-            cb         : required     # cb(err, utc_seconds_epoch)
-        @call
-            message:
-                message.project_get_local_state
-                    project_id : opts.project_id
-            cb : (err, resp) ->
-                if err
-                    opts.cb(err)
-                else if resp.event == 'error'
-                    opts.cb(resp.error)
-                else
-                    opts.cb(false, resp.state)
-
     #################################################
     # Project Server Control
     #################################################
@@ -2233,40 +2214,40 @@ class exports.Connection extends EventEmitter
                         customer               : mesg.customer
                     opts.cb(undefined, resp)
 
-    stripe_create_card: (opts) =>
+    stripe_create_source: (opts) =>
         opts = defaults opts,
             token : required
             cb    : required
         @call
-            message     : message.stripe_create_card(token: opts.token)
+            message     : message.stripe_create_source(token: opts.token)
             error_event : true
             cb          : opts.cb
 
-    stripe_delete_card: (opts) =>
+    stripe_delete_source: (opts) =>
         opts = defaults opts,
             card_id : required
             cb    : required
         @call
-            message     : message.stripe_delete_card(card_id: opts.card_id)
+            message     : message.stripe_delete_source(card_id: opts.card_id)
             error_event : true
             cb          : opts.cb
 
-    stripe_update_card: (opts) =>
+    stripe_update_source: (opts) =>
         opts = defaults opts,
             card_id : required
-            info    : required    # see https://stripe.com/docs/api/node#update_card
+            info    : required
             cb      : required
         @call
-            message     : message.stripe_update_card(card_id: opts.card_id, info:opts.info)
+            message     : message.stripe_update_source(card_id: opts.card_id, info:opts.info)
             error_event : true
             cb          : opts.cb
 
-    stripe_set_default_card: (opts) =>
+    stripe_set_default_source: (opts) =>
         opts = defaults opts,
             card_id : required
             cb    : required
         @call
-            message     : message.stripe_set_default_card(card_id: opts.card_id)
+            message     : message.stripe_set_default_source(card_id: opts.card_id)
             error_event : true
             cb          : opts.cb
 

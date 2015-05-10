@@ -1458,6 +1458,7 @@ class Monitor(object):
         this = int(socket.gethostname()[5:]) # 'cloud[m]'
         v = []
         for n in range(1,8) + range(10,22):  # hard coded to our HARDWARE
+            if n == 16: continue  # host is dead
             if n == this:
                 if this == 3: # monitor runs on 10 and 3
                     other = '10'
@@ -1514,15 +1515,15 @@ class Monitor(object):
         print s
         return json.loads(s)
 
-    def disk_usage(self, hosts='all', disk_threshold=90):
+    def disk_usage(self, hosts='all', disk_threshold=98):
         """
-        Verify that no disk is more than disk_threshold (=90%).
+        Verify that no disk is more than disk_threshold (=disk_threshold%).
         """
-        cmd = "df --output=pcent |sort -n |tail -1"
+        cmd = "df --output=pcent,source |grep -v fuse | sort -n|tail -1"
         ans = []
         for k, v in self._hosts(hosts, cmd, parallel=True, wait=True, timeout=30).iteritems():
             d = {'host':k[0], 'service':'disk_usage'}
-            percent = int(v.get('stdout','100').strip().strip('%'))
+            percent = int((v.get('stdout','100') + ' 0').split()[0].strip().strip('%'))
             d['percent'] = percent
             if percent > disk_threshold:
                 d['status'] = 'down'
@@ -1848,7 +1849,8 @@ class Services(object):
                                                                   for h, o in v] + ['default=DC0:RAC0'])
 
             for address, o in v:
-                dc = o.get('topology','DC0:RAC0').split(':')[0].lower()  # this must be before o['topology'] line below!
+                #dc = o.get('topology','DC0:RAC0').split(':')[0].lower()  # this must be before o['topology'] line below!
+                dc = 'dc%s'%self.ip_address_to_dc(address)
                 if dc not in self._cassandras_in_dc:
                     self._cassandras_in_dc[dc] = [self._hosts.hostname(address)]
                 else:
