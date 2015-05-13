@@ -37,9 +37,9 @@ id='e7a8a705-1c40-4397-836a-b60e259e1137';  x={};require('compute').compute_serv
 
 
 # obviously don't want to trigger this too quickly, since it may mean file loss.
-AUTOMATIC_FAILOVER_TIME_S = 60*10
+AUTOMATIC_FAILOVER_TIME_S = 60*5  # 5 minutes
 
-SERVER_STATUS_TIMEOUT_S = 5  # 5 seconds
+SERVER_STATUS_TIMEOUT_S = 7  # 7 seconds
 
 # todo -- these should be in a table in the database.
 DEFAULT_SETTINGS =
@@ -172,7 +172,7 @@ compute_server_cache = undefined
 exports.compute_server = compute_server = (opts) ->
     opts = defaults opts,
         database : undefined
-        keyspace : undefined
+        keyspace : 'salvus'
         db_hosts : undefined
         cb       : required
     if compute_server_cache?
@@ -184,7 +184,7 @@ class ComputeServerClient
     constructor: (opts) ->
         opts = defaults opts,
             database : undefined
-            keyspace : undefined
+            keyspace : 'salvus'
             db_hosts : ['localhost']
             cb       : required
         dbg = @dbg("constructor")
@@ -224,10 +224,11 @@ class ComputeServerClient
     ###
     # get info about server and add to database
 
+        require('compute').compute_server(db_hosts:['localhost'],cb:(e,s)->console.log(e);s.add_server(host:'compute0-us', cb:(e)->console.log("done",e)))
 
-        require('compute').compute_server(db_hosts:['smc0-us-central1-c'],keyspace:'salvus',cb:(e,s)->console.log(e);s.add_server(host:'compute0-us', cb:(e)->console.log("done",e)))
+        require('compute').compute_server(db_hosts:['smc0-us-central1-c'],cb:(e,s)->console.log(e);s.add_server(host:'compute0-us', cb:(e)->console.log("done",e)))
 
-require('compute').compute_server(db_hosts:['smc0-us-central1-c'],keyspace:'salvus',cb:(e,s)->console.log(e);s.add_server(experimental:true, host:'compute0-amath-us', cb:(e)->console.log("done",e)))
+require('compute').compute_server(db_hosts:['smc0-us-central1-c'],cb:(e,s)->console.log(e);s.add_server(experimental:true, host:'compute0-amath-us', cb:(e)->console.log("done",e)))
 
          require('compute').compute_server(keyspace:'devel',cb:(e,s)->console.log(e);s.add_server(host:'localhost', cb:(e)->console.log("done",e)))
     ###
@@ -555,10 +556,12 @@ require('compute').compute_server(db_hosts:['smc0-us-central1-c'],keyspace:'salv
             opts.cb(err, result)
         )
 
-    move_off_host: (opts) =>
+    # require('compute').compute_server(db_hosts:['smc0-us-central1-c'],cb:(e,s)->s.vacate_hosts(hosts:['compute2-us','compute3-us'], cb:(e)->console.log("done",e)))
+    vacate_hosts: (opts) =>
         opts = defaults opts,
-            hosts : required
+            hosts : required    # array
             move  : false
+            targets : undefined  # array
             cb    : required
         @database.select
             table   : 'projects'
@@ -573,6 +576,7 @@ require('compute').compute_server(db_hosts:['smc0-us-central1-c'],keyspace:'salv
                     winston.debug("got them; now processing...")
                     v = (x[0] for x in results when x[1] in opts.hosts)
                     winston.debug("found #{v.length} on #{opts.host}")
+                    i = 0
                     f = (project_id, cb) =>
                         winston.debug("moving #{project_id} off of #{opts.host}")
                         if opts.move
@@ -584,105 +588,21 @@ require('compute').compute_server(db_hosts:['smc0-us-central1-c'],keyspace:'salv
                                     else
                                         project.move(cb)
                         else
+                            if opts.targets?
+                                i = (i + 1)%opts.targets.length
                             @database.update
                                 table : 'projects'
                                 set   :
-                                    'compute_server' : undefined
+                                    'compute_server' : if opts.targets? then opts.targets[i] else undefined
                                 where :
                                     project_id : project_id
                                 consistency : require("cassandra-driver").types.consistencies.all
                                 cb    : cb
                     async.mapLimit(v, 15, f, opts.cb)
 
-    # open recent projects
-    migrate_recent: (opts) =>
-        opts = defaults opts,
-            number    : 15000
-            limit     : 10           # number to do at once in parallel
-            query_limit : undefined  # how many projects to get from db -- if given basically randomly restricts to a subset
-            timeout   : 1000*60*60   # 1 hour
-            cb        : required
-        target = undefined
-        async.series([
-            (cb) =>
-                @database.select
-                    table   : 'projects'
-                    columns : ['project_id', 'last_edited', 'migrated']
-                    stream  : true
-                    limit   : opts.query_limit
-                    cb      : (err, results) =>
-                        if err
-                            cb(err)
-                        else
-                            winston.debug("got them; now processing...")
-                            results = (x for x in results when not x[2])
-                            results.sort (a,b) =>
-                                if not a[1]
-                                    a[1] = ''
-                                if not b[1]
-                                    b[1] = ''
-                                if a[1] < b[1]
-                                    return 1
-                                else if a[1] > b[1]
-                                    return -1
-                                else
-                                    return 0
-                            winston.debug("done sorting")
-                            target = results.slice(0,opts.number)
-                            cb()
-            (cb) =>
-                i = 0
-                n = misc.len(target)
-                winston.debug("next migrate resulting #{n} targets")
-                running = {}
-                f0 = (x, cb) =>
-                    j = i + 1
-                    i += 1
-                    running[j] = x[0]
-                    winston.debug("*****************************************************")
-                    winston.debug("** #{j}/#{n}: #{x[0]}, #{new Date(x[1])}")
-                    winston.debug("RUNNING=#{misc.to_json(misc.keys(running))}")
-                    winston.debug("*****************************************************")
-                    @project
-                        project_id : x[0]
-                        cb         : (err, project) =>
-                            if err
-                                cb(err)
-                            else
-                                project.migrate_update_if_never_before
-                                    cb : (err) =>
-                                        delete running[j]
-                                        winston.debug("*****************************************************")
-                                        winston.debug("** #{j}/#{n}: DONE -- #{x[0]}, #{new Date(x[1])} DONE")
-                                        winston.debug("RUNNING=#{misc.to_json(running)}")
-                                        winston.debug("*****************************************************")
-                                        winston.debug("result of migration of #{x[0]}: #{err}")
-                                        if not err
-                                            cb(); return
-                                        g = () =>
-                                            winston.debug("retry of #{x[0]}...")
-                                            project.migrate_update_if_never_before
-                                                cb : cb
-                                        setTimeout(g, 1000)
-                f = (x, cb) =>
-                    f0 x, (err) =>
-                        if err
-                            fs.writeFileSync("migrate/#{x[0]}", misc.to_json(err))
-                        if f1_timer
-                            clearTimeout(f1_timer)
-                        cb?()
-                    f1 = () =>
-                        f1_timer = undefined
-                        cb?()
-                        cb = undefined
-                        fs.writeFileSync("migrate/#{x[0]}", "timed out")
-                    f1_timer = setTimeout(f1, opts.timeout)
-                async.mapLimit(target, opts.limit, f, cb)
-        ], opts.cb)
-
     ###
     projects = require('misc').split(fs.readFileSync('/home/salvus/work/2015-amath/projects').toString())
-    require('compute').compute_server(db_hosts:['smc0-us-central1-c'],keyspace:'salvus',cb:(e,s)->console.log(e); s.set_quotas(projects:projects, cores:8, cb:(e)->console.log("DONE",e)))
+    require('compute').compute_server(db_hosts:['smc0-us-central1-c'],keyspace:'salvus',cb:(e,s)->console.log(e); s.set_quotas(projects:projects, cores:4, cb:(e)->console.log("DONE",e)))
     ###
     set_quotas: (opts) =>
         opts = defaults opts,
@@ -708,13 +628,14 @@ require('compute').compute_server(db_hosts:['smc0-us-central1-c'],keyspace:'salv
         async.mapLimit(projects, 10, f, cb)
 
     ###
-    projects = require('misc').split(fs.readFileSync('/home/salvus/work/2015-amath/projects').toString())
-    require('compute').compute_server(db_hosts:['smc0-us-central1-c'],keyspace:'salvus',cb:(e,s)->console.log(e); s.move(projects:projects, target:'compute0-amath-us', cb:(e)->console.log("DONE",e)))
+    projects = require('misc').split(fs.readFileSync('/home/salvus/work/2015-amath/projects-grad').toString())
+    require('compute').compute_server(db_hosts:['smc0-us-central1-c'], cb:(e,s)->console.log(e); s.move(projects:projects, target:'compute1-amath-us', cb:(e)->console.log("DONE",e)))
     ###
     move: (opts) =>
         opts = defaults opts,
             projects : required    # array of project id's
             target   : required
+            limit    : 10
             cb       : required
         projects = opts.projects
         delete opts.projects
@@ -725,8 +646,58 @@ require('compute').compute_server(db_hosts:['smc0-us-central1-c'],keyspace:'salv
                 project_id : project_id
                 cb         : (err, project) =>
                     project.move(target: opts.target, cb:cb)
-        async.mapLimit(projects, 10, f, cb)
+        async.mapLimit(projects, opts.limit, f, cb)
 
+    # x={};require('compute').compute_server(db_hosts:['smc0-us-central1-c'], cb:(e,s)->console.log(e);x.s=s;x.s.tar_backup_recent(max_age_h:1, cb:(e)->console.log("DONE",e)))
+    tar_backup_recent: (opts) =>
+        opts = defaults opts,
+            max_age_h : required     # must be at most 1 week
+            limit     : 1            # number to backup in parallel
+            cb        : required
+        dbg = @dbg("tar_backup_recent")
+        target = undefined
+        async.series([
+            (cb) =>
+                @database.recently_modified_projects
+                    max_age_s : opts.max_age_h*60*60
+                    cb        : (err, results) =>
+                        if err
+                            cb(err)
+                        else
+                            dbg("got #{results.length} projects modified in the last #{opts.max_age_h} hours")
+                            target = results
+                            cb()
+
+            (cb) =>
+                i = 0
+                n = misc.len(target)
+                winston.debug("next backing up resulting #{n} targets")
+                running = {}
+                f = (project_id, cb) =>
+                  fs.exists "/projects/#{project_id}", (exists) =>
+                    if not exists
+                       winston.debug("skipping #{project_id} since not here")
+                       cb(); return
+                    j = i + 1
+                    i += 1
+                    running[j] = project_id
+                    winston.debug("*****************************************************")
+                    winston.debug("** #{j}/#{n}: #{project_id}")
+                    winston.debug("RUNNING=#{misc.to_json(misc.keys(running))}")
+                    winston.debug("*****************************************************")
+
+                    smc_compute
+                        args : ['tar_backup', project_id]
+                        cb   : (err) =>
+                            delete running[j]
+                            winston.debug("*****************************************************")
+                            winston.debug("** #{j}/#{n}: DONE -- #{project_id}, DONE")
+                            winston.debug("RUNNING=#{misc.to_json(running)}")
+                            winston.debug("*****************************************************")
+                            winston.debug("result of backing up #{project_id}: #{err}")
+                            cb(err)
+                async.mapLimit(target, opts.limit, f, cb)
+        ], opts.cb)
 
 
 class ProjectClient extends EventEmitter
@@ -1868,7 +1839,8 @@ class Project
         dbg = @dbg("constructor")
         sqlite_db.select
             table   : 'projects'
-            columns : ['state', 'state_time', 'state_error', 'mintime']
+            columns : ['state', 'state_time', 'state_error', 'mintime',
+                       'network', 'cores', 'memory', 'cpu_shares']
             where   : {project_id : @project_id}
             cb      : (err, results) =>
                 if err
@@ -1879,11 +1851,16 @@ class Project
                     @_state      = undefined
                     @_state_time = new Date()
                     @_state_error = undefined
+                    @_network = false
                 else
                     @_state      = results[0].state
                     @_state_time = new Date(results[0].state_time)
                     @_state_error= results[0].state_error
                     @_mintime    = results[0].mintime
+                    @_network    = results[0].network
+                    @_cores      = results[0].cores
+                    @_memory     = results[0].memory
+                    @_cpu_shares = results[0].cpu_shares
                     dbg("fetched project info from db: state=#{@_state}, state_time=#{@_state_time}, state_error=#{@_state_error}, mintime=#{@_mintime}s")
                     if not STATES[@_state]?.stable
                         dbg("updating non-stable state")
@@ -1934,7 +1911,7 @@ class Project
             args        : undefined
             at_most_one : false     # ignores subsequent args if set -- only use this for things where args don't matter
             timeout     : TIMEOUT
-            cb          : required
+            cb          : undefined
         dbg = @dbg("_command(action:'#{opts.action}')")
 
         if opts.at_most_one
@@ -1958,9 +1935,9 @@ class Project
                     v = @_command_cbs[opts.action]
                     delete @_command_cbs[opts.action]
                     for cb in v
-                        cb(err, result)
+                        cb?(err, result)
                 else
-                    opts.cb(err, result)
+                    opts.cb?(err, result)
 
     command: (opts) =>
         opts = defaults opts,
@@ -1992,6 +1969,15 @@ class Project
                     # argument to open.  We then remove that argument.
                     assigned = opts.args[0]
                     opts.args.shift()
+                if opts.action == 'open' or opts.action == 'start'
+                    if not opts.args?
+                        opts.args = []
+                    for k in ['cores', 'memory', 'cpu_shares']
+                        v = @["_#{k}"]
+                        if v?
+                            opts.args.push("--#{k}")
+                            opts.args.push(v)
+
                 state_info = STATES[state]
                 if not state_info?
                     err = "bug / internal error -- unknown state '#{misc.to_safe_str(state)}'"
@@ -2148,6 +2134,7 @@ class Project
                         dbg("got new state -- #{@_state}")
                         @_update_state_db()
                         @_update_state_listeners()
+
                 v = @_update_state_cbs
                 delete @_update_state_cbs
                 dbg("calling #{v.length} callbacks")
@@ -2189,6 +2176,55 @@ class Project
                     opts.cb(err)
                 else
                     opts.cb(undefined, {})
+
+    _update_network: (cb) =>
+        @command
+            action     : 'network'
+            args       : if @_network then [] else ['--ban']
+            cb         : cb
+
+    set_network: (opts) =>
+        opts = defaults opts,
+            network : required
+            cb      : required
+        dbg = @dbg("network(network=#{opts.network})")
+        @_network = opts.network
+        resp = undefined
+        async.parallel([
+            (cb) =>
+                sqlite_db.update
+                    table : 'projects'
+                    set   : {network: opts.network}
+                    where : {project_id: @project_id}
+                    cb    : () => cb()
+            (cb) =>
+                @_update_network (err, r) =>
+                    resp = r
+                    cb(err)
+        ], (err) => opts.cb?(err, resp))
+
+    set_compute_quota: (opts) =>
+        opts = defaults opts,
+            args : required
+            cb   : required
+        dbg = @dbg("set_compute_quota")
+        i = 0
+        quotas = {}
+        while i < opts.args.length
+            k = opts.args[i].slice(2)
+            v = parseInt(opts.args[i+1])
+            quotas[k] = v
+            @["_#{k}"] = v
+            i += 2
+        sqlite_db.update
+            table : 'projects'
+            set   : quotas
+            where : {project_id: @project_id}
+            cb    : () =>
+        @command
+            action     : 'compute_quota'
+            args       : opts.args
+            cb         : opts.cb
 
 secret_token = undefined
 read_secret_token = (cb) ->
@@ -2244,6 +2280,16 @@ handle_compute_mesg = (mesg, socket, cb) ->
             else if mesg.action == 'mintime'
                 p.set_mintime
                     mintime : mesg.args[0]
+                    cb      : (err, r) ->
+                        resp = r; cb(err)
+            else if mesg.action == 'network'
+                p.set_network
+                    network : mesg.args.length == 0 # no arg = enable
+                    cb      : (err, r) ->
+                        resp = r; cb(err)
+            else if mesg.action == 'compute_quota'
+                p.set_compute_quota
+                    args    : mesg.args
                     cb      : (err, r) ->
                         resp = r; cb(err)
             else
@@ -2392,7 +2438,7 @@ init_sqlite_db = (cb) ->
                         query : query
                         cb    : cb
                 async.map([
-                    'CREATE TABLE projects(project_id TEXT PRIMARY KEY, state TEXT, state_error TEXT, state_time INTEGER, mintime INTEGER, assigned INTEGER, network BOOLEAN)',
+                    'CREATE TABLE projects(project_id TEXT PRIMARY KEY, state TEXT, state_error TEXT, state_time INTEGER, mintime INTEGER, assigned INTEGER, network BOOLEAN, cores INTEGER, memory INTEGER, cpu_shares INTEGER)',
                     'CREATE TABLE keyvalue(key TEXT PRIMARY KEY, value TEXT)'
                     ], f, cb)
     ], cb)
@@ -2677,10 +2723,58 @@ init_firewall = (cb) ->
         cb(err)
     )
 
+update_states = (cb) ->
+    # TEMPORARY until I have time to fix a bug.
+    # Right now when a project times out starting, it gets stuck like that forever unless the client
+    # does a project.state(force:true,update:true,cb:...), which the hub clients at this moment
+    # evidently don't do.  So as a temporary workaround (I don't want to restart them until making status better!),
+    # we have this:
+    # 1. query database for all projects in starting state which started more than 60 seconds ago.
+    # 2. call .state(force:true,update:true,cb:...)
+    projects = undefined
+    dbg = (m) -> winston.debug("update_state: #{m}")
+    dbg()
+    async.series([
+        (cb) ->
+            dbg("querying db")
+            sqlite_db.select
+                table   : 'projects'
+                columns : ['project_id', 'state_time', 'state']
+                cb      : (err, x) ->
+                    if err
+                        dbg("query err=#{misc.to_safe_str(err)}")
+                        cb(err)
+                    else
+                        projects = (a for a in x when a.state == 'starting' or a.state == 'stopping' or a.state == 'saving')
+                        dbg("got #{projects.length} projects that are '....ing'")
+                        cb()
+        (cb) ->
+            if projects.length == 0
+                cb(); return
+            dbg("possibly updating each of #{projects.length} projects")
+            f = (x, cb) ->
+                if x.state_time >= new Date() - 1000*STATES[x.state].timeout
+                    dbg("not updating #{x.project_id}")
+                    cb()
+                else
+                    dbg("updating #{x.project_id}")
+                    get_project
+                        project_id : x.project_id
+                        cb         : (err, project) ->
+                            if err
+                                cb(err)
+                            else
+                                project.state(update:true, cb:cb)
+            async.map(projects, f, cb)
+        ], (err) ->
+            setTimeout(update_states, 2*60*1000)
+            cb?(err)
+        )
+
 
 start_server = (cb) ->
     winston.debug("start_server")
-    async.series [init_stats, read_secret_token, init_sqlite_db, init_firewall, init_mintime, start_tcp_server], (err) ->
+    async.series [init_stats, read_secret_token, init_sqlite_db, init_firewall, init_mintime, start_tcp_server, update_states], (err) ->
         if err
             winston.debug("Error starting server -- #{err}")
         else

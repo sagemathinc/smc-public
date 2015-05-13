@@ -729,6 +729,11 @@ class Cassandra(Process):
 
         path = os.path.join(DATA, 'cassandra-%s'%id) if path is None else path
         makedirs(path)
+        lib = os.path.join(path, 'lib')
+        if not os.path.exists(lib):
+            log.info("creating cassandra lib symlink")
+            os.symlink(os.path.join(os.path.abspath(cassandra_install), 'lib'), lib)
+
         os.environ['CASSANDRA_HOME'] = path
 
         logs_path = os.path.join(path, 'logs'); makedirs(logs_path)
@@ -1396,8 +1401,8 @@ class Monitor(object):
 
     def compute(self):
         ans = []
-        c = 'nproc && uptime && free -g && ps -C node -o args=|grep "local_hub.js run" |wc -l && cd salvus/salvus; . salvus-env; ./bup_server status 2>/dev/null'
-        for k, v in self._hosts('compute-2', c, wait=True, parallel=True, timeout=120).iteritems():
+        c = 'nproc && uptime && free -g && ps -C node -o args=|grep "local_hub.js run" |wc -l && cd salvus/salvus; . salvus-env; compute status 2>/dev/null'
+        for k, v in self._hosts('compute', c, wait=True, parallel=True, timeout=120).iteritems():
             d = {'host':k[0], 'service':'compute'}
             stdout = v.get('stdout','')
             m = stdout.splitlines()
@@ -1454,30 +1459,6 @@ class Monitor(object):
         ans.sort(f)
         return ans
 
-    def compute_ssh(self):
-        this = int(socket.gethostname()[5:]) # 'cloud[m]'
-        v = []
-        for n in range(1,8) + range(10,22):  # hard coded to our HARDWARE
-            if n == 16: continue  # host is dead
-            if n == this:
-                if this == 3: # monitor runs on 10 and 3
-                    other = '10'
-                else:
-                    other = '3'
-                cmd = 'ssh cloud%s "source ~/.ssh/agent; ssh cloud%s -o StrictHostKeyChecking=no -p 2222 hostname"'%(
-                     other, n)
-            else:
-                cmd = 'ssh cloud%s -o StrictHostKeyChecking=no -p 2222 hostname'%n
-            v.append(((cmd, 'compute%s'%n),{}))
-
-        def f(cmd, host):
-            return {'host'    : host,
-                    'service' : 'compute-ssh',
-                    'status'  : 'up' if os.popen(cmd).read().startswith(host) else 'down'}
-
-        # We do the ssh's in parallel, to save an enormous amount of time.
-        return misc.thread_map(f, v)
-
     def load(self):
         """
         Return normalized load on *everything*, sorted by highest current load first.
@@ -1515,7 +1496,7 @@ class Monitor(object):
         print s
         return json.loads(s)
 
-    def disk_usage(self, hosts='all', disk_threshold=98):
+    def disk_usage(self, hosts='all', disk_threshold=95):
         """
         Verify that no disk is more than disk_threshold (=disk_threshold%).
         """
@@ -1648,7 +1629,6 @@ class Monitor(object):
             'hub'         : self.hub(),
             'stats'       : self.stats(),
             'compute'     : self.compute(),
-            'compute-ssh' : self.compute_ssh()
             #'zfs'       : self.zfs(),
             #'cassandra'   : self.cassandra(),
         }
@@ -1800,7 +1780,7 @@ class Monitor(object):
             time.sleep(20)
 
 class Services(object):
-    def __init__(self, path, username=whoami, keyspace='salvus', passwd=True, password=None):
+    def __init__(self, path, username=whoami, keyspace='salvus', passwd=True, password=""):
         """
         - passwd -- if False, don't ask for a password; in this case nothing must require sudo to
           run, and all logins must work using ssh with keys
