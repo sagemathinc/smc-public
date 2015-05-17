@@ -31,7 +31,7 @@ id='e7a8a705-1c40-4397-836a-b60e259e1137'; x={};require('compute').compute_serve
 Live use
 
 
-id='e7a8a705-1c40-4397-836a-b60e259e1137';  x={};require('compute').compute_server(db_hosts:['smc0-us-central1-c'],keyspace:'salvus',cb:(e,s)->console.log(e);x.s=s;x.s.project(project_id:id,cb:(e,p)->console.log(e);x.p=p))
+id='e7a8a705-1c40-4397-836a-b60e259e1137';  x={};require('compute').compute_server(db_hosts:['smc0-us-central1-c'],cb:(e,s)->console.log(e);x.s=s;x.s.project(project_id:id,cb:(e,p)->console.log(e);x.p=p))
 
 ###
 
@@ -2669,6 +2669,7 @@ init_firewall = (cb) ->
                         key : "smc-servers"
                         cb  : (err, w) ->
                             incoming_whitelist_hosts = w
+                            outgoing_whitelist_hosts += ',' + w  # allow users to connect to get blobs when printing sage worksheets
                             cb(err)
                 (cb) ->
                     dbg("getting admin whitelist")
