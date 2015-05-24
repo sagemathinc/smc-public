@@ -47,7 +47,7 @@ Supported Platform:  Ubuntu 14.10
 
 Steps:
 
-    salvus@cloud3:~/iso$ wget http://releases.ubuntu.com/14.04/ubuntu-14.04-beta2-server-amd64.iso
+    salvus@cloud3:~/iso$ wget http://releases.ubuntu.com/14.04/ubuntu-14.04.2-server-amd64.iso
     salvus@cloud3:~/vm/images/base3$ qemu-img create -f qcow2 salvus-2014-04-17-14-4630.img 100G
     salvus@cloud3:~/vm/images/base3$ virt-install --connect=qemu:///system --ram 16000 -n salvus-2014-04-17-14-4630 --cdrom ~/iso/ubuntu-14.04-beta2-server-amd64.iso  --cpu=host --network=network:default,model=virtio --vcpus=16 --noautoconsole --graphics=vnc,port=13389  --disk=salvus-2014-04-17-14-4630.img,device=disk,bus=virtio,format=qcow2,cache=writeback
 
@@ -403,7 +403,7 @@ PYTHON_VERSION     = '2.7.9'     # options here -- https://www.python.org/ftp/py
 SETUPTOOLS_VERSION = '15.2'      # options here (bottom!) -- https://pypi.python.org/pypi/setuptools
 NGINX_VERSION      = '1.7.10'    # options here -- http://nginx.org/download/
 HAPROXY_VERSION    = '1.5.11'    # options here -- http://www.haproxy.org/download/
-STUNNEL_VERSION    = '5.10'      # options here -- https://www.stunnel.org/downloads.html
+STUNNEL_VERSION    = '5.17'      # options here -- https://www.stunnel.org/downloads.html
 GDAL_VERSION       = '1.11.2'    # options here -- http://download.osgeo.org/gdal/?C=M;O=D
 
 import logging, os, shutil, subprocess, sys, time, urllib2
