@@ -655,8 +655,12 @@ class Project(object):
         pid = os.fork()
         if pid == 0:
             try:
+                os.setgid(self.uid)
                 os.setuid(self.uid)
                 os.environ['HOME'] = self.project_path
+                os.environ['USER'] = os.environ['USERNAME'] =  os.environ['LOGNAME'] = self.username
+                os.environ['MAIL'] = '/var/mail/%s'%self.username
+                del os.environ['SUDO_COMMAND']; del os.environ['SUDO_UID']; del os.environ['SUDO_GID']; del os.environ['SUDO_USER']
                 os.chdir(self.smc_path)
                 self.cmd("./start_smc")
             finally:
@@ -1434,7 +1438,7 @@ class Project(object):
         #    */3 * * * * ls -1 /snapshots/ > /projects/snapshots
         snapshots = open('/projects/snapshots').readlines()
         snapshots.sort()
-        n = 200
+        n = 300
         snapshots = snapshots[-n:]  # limit to n for now
         names = set([x[:17] for x in snapshots])
         for y in os.listdir(self.snapshot_link):
@@ -1664,6 +1668,7 @@ if __name__ == "__main__":
                         dest='bucket', default=os.environ.get("SMC_BUCKET",""), type=str)
 
     parser.add_argument("--storage",
+                        #help="", dest='storage', default='storage0-devel-us', type=str)
                         help="", dest='storage', default='storage0-us', type=str)
 
     # if enabled, we make incremental tar archives on every save operation and

@@ -43,18 +43,6 @@ The components are:
     * sage -- we do *not* build or include Sage; it must be available system-wide or for
       user in order for worksheets to work (everything but worksheets should work without Sage).
 
-Supported Platform:  Ubuntu 14.10
-
-Steps:
-
-    salvus@cloud3:~/iso$ wget http://releases.ubuntu.com/14.04/ubuntu-14.04-beta2-server-amd64.iso
-    salvus@cloud3:~/vm/images/base3$ qemu-img create -f qcow2 salvus-2014-04-17-14-4630.img 100G
-    salvus@cloud3:~/vm/images/base3$ virt-install --connect=qemu:///system --ram 16000 -n salvus-2014-04-17-14-4630 --cdrom ~/iso/ubuntu-14.04-beta2-server-amd64.iso  --cpu=host --network=network:default,model=virtio --vcpus=16 --noautoconsole --graphics=vnc,port=13389  --disk=salvus-2014-04-17-14-4630.img,device=disk,bus=virtio,format=qcow2,cache=writeback
-
-Install with 100GB disk with 32GB /, 10GB /tmp, and /usr/local a ZFS dedup,compressed filesystem.  No encryption, since base vm doesn't host user data.
-
-    apt-get update; apt-get upgrade
-
 
 # Install critical packages needed for building SMC source code:
 
@@ -122,7 +110,7 @@ This line is in the .sagemathcloud env, so building sage is fast for users (thou
 # Additional packages (mainly for users, not building).
 
 
-    apt-get install  libmed1 libhdf5-openmpi-7 gmsh dstat emacs vim texlive texlive-* gv imagemagick octave mercurial flex bison unzip libzmq-dev uuid-dev scilab axiom yacas octave-symbolic quota quotatool dot2tex python-numpy python-scipy python-pandas python-tables libglpk-dev python-h5py zsh python3 python3-zmq python3-setuptools cython htop ccache python-virtualenv clang libgeos-dev libgeos++-dev sloccount racket libxml2-dev libxslt-dev irssi libevent-dev tmux sysstat sbcl gawk noweb libgmp3-dev ghc  ghc-doc ghc-haddock ghc-mod ghc-prof haskell-mode haskell-doc subversion cvs bzr rcs subversion-tools git-svn markdown lua5.2 lua5.2-*  encfs auctex vim-latexsuite yatex spell cmake libpango1.0-dev xorg-dev gdb valgrind doxygen haskell-platform haskell-platform-doc haskell-platform-prof  mono-devel mono-tools-devel ocaml ocaml-native-compilers camlp4-extra proofgeneral proofgeneral-doc tuareg-mode ocaml-mode libgdbm-dev mlton sshfs sparkleshare fig2ps epstool libav-tools python-software-properties software-properties-common h5utils libnetcdf-dev netcdf-doc netcdf-bin tig libtool iotop asciidoc autoconf bsdtar attr  libicu-dev iceweasel xvfb tree bindfs liblz4-tool tinc python-scikits-learn python-scikits.statsmodels python-skimage python-skimage-doc  python-skimage-lib python-sklearn  python-sklearn-doc  python-sklearn-lib python-fuse cgroup-lite cgmanager-utils cgroup-bin libpam-cgroup cgmanager cgmanager-utils cgroup-lite  cgroup-bin  r-recommended libquantlib0 libquantlib0-dev quantlib-examples quantlib-python quantlib-refman-html r-cran-rquantlib  libpng++-dev libcairomm-1.0-dev r-cran-cairodevice x11-apps  mesa-utils libpangox-1.0-dev    libf2c2-dev gnugo libapr1-dev libcap2-bin npm coffeescript  coffeescript-doc lbzip2 mosh smem libcurl4-openssl-dev jekyll lynx-cur root-system-bin libroot-bindings-python-dev libroot-graf2d-postscript5.34  csh x11vnc x11-apps meld aspell-* inkscape libopencv-dev build-essential checkinstall cmake pkg-config yasm libjpeg-dev libjasper-dev libavcodec-dev libavformat-dev libswscale-dev libdc1394-22-dev libxine2-dev libgstreamer0.10-dev libgstreamer-plugins-base0.10-dev libv4l-dev python-dev python-numpy libtbb-dev libqt4-dev libgtk2.0-dev  libmp3lame-dev libopencore-amrnb-dev libopencore-amrwb-dev libtheora-dev libvorbis-dev libxvidcore-dev x264 v4l-utils r-cran-rgl libgtk2.0-dev yi php5 python-docutils pdftk smlnj  ml-lex ml-yacc p7zip-full check  unison-all fonts-ocr-a libwebp-dev libpari-dev libpari-dbg pari-gp2c pari-galpol lzip ncompress ipython3 gpicview python-pip libedit-dev lrzip libgsl0-dev btrfs-tools tmpreaper
+    apt-get install  libmed1 libhdf5-mpich2-dev gmsh dstat emacs vim texlive texlive-* gv imagemagick octave mercurial flex bison unzip libzmq-dev uuid-dev scilab axiom yacas octave-symbolic quota quotatool dot2tex python-numpy python-scipy python-pandas python-tables libglpk-dev python-h5py zsh python3 python3-zmq python3-setuptools cython htop ccache python-virtualenv clang libgeos-dev libgeos++-dev sloccount racket libxml2-dev libxslt-dev irssi libevent-dev tmux sysstat sbcl gawk noweb libgmp3-dev ghc  ghc-doc ghc-haddock ghc-mod ghc-prof haskell-mode haskell-doc subversion cvs bzr rcs subversion-tools git-svn markdown lua5.2 lua5.2-*  encfs auctex vim-latexsuite yatex spell cmake libpango1.0-dev xorg-dev gdb valgrind doxygen haskell-platform haskell-platform-doc haskell-platform-prof  mono-devel mono-tools-devel ocaml ocaml-native-compilers camlp4-extra proofgeneral proofgeneral-doc tuareg-mode ocaml-mode libgdbm-dev mlton sshfs sparkleshare fig2ps epstool libav-tools python-software-properties software-properties-common h5utils libnetcdf-dev netcdf-doc netcdf-bin tig libtool iotop asciidoc autoconf bsdtar attr  libicu-dev iceweasel xvfb tree bindfs liblz4-tool tinc python-scikits-learn python-scikits.statsmodels python-skimage python-skimage-doc  python-skimage-lib python-sklearn  python-sklearn-doc  python-sklearn-lib python-fuse cgroup-lite cgmanager-utils cgroup-bin libpam-cgroup cgmanager cgmanager-utils cgroup-lite  cgroup-bin  r-recommended libquantlib0 libquantlib0-dev quantlib-examples quantlib-python quantlib-refman-html r-cran-rquantlib  libpng++-dev libcairomm-1.0-dev r-cran-cairodevice x11-apps  mesa-utils libpangox-1.0-dev    libf2c2-dev gnugo libapr1-dev libcap2-bin npm coffeescript  coffeescript-doc lbzip2 mosh smem libcurl4-openssl-dev jekyll lynx-cur root-system-bin libroot-bindings-python-dev libroot-graf2d-postscript5.34  csh x11vnc x11-apps meld aspell-* inkscape libopencv-dev build-essential checkinstall cmake pkg-config yasm libjpeg-dev libjasper-dev libavcodec-dev libavformat-dev libswscale-dev libdc1394-22-dev libxine2-dev libgstreamer0.10-dev libgstreamer-plugins-base0.10-dev libv4l-dev python-dev python-numpy libtbb-dev libqt4-dev libgtk2.0-dev  libmp3lame-dev libopencore-amrnb-dev libopencore-amrwb-dev libtheora-dev libvorbis-dev libxvidcore-dev x264 v4l-utils r-cran-rgl libgtk2.0-dev yi php5 python-docutils pdftk smlnj  ml-lex ml-yacc p7zip-full check  unison-all fonts-ocr-a libwebp-dev libpari-dev libpari-dbg pari-gp2c pari-galpol lzip ncompress ipython3 gpicview python-pip libedit-dev lrzip libgsl0-dev btrfs-tools tmpreaper hdf5-helpers libhdf5-cpp-8 libhdf5-dev scons wordnet pv
 
 
 # tmpreaper
@@ -248,7 +236,7 @@ Then edit /usr/local/share/jupyter/kernels/python3 and add a "-E" option before 
         vi "/usr/local/share/jupyter/kernels/julia 0.3/kernel.json"
 
         {
-          "display_name": "Julia 0.3.7",
+          "display_name": "Julia",
           "argv": [
             "/usr/bin/julia",
             "-i",
@@ -394,6 +382,20 @@ In /etc/sysctl.conf, put:
     pip install twitter
     pip3 install twitter
 
+# System-wide git trac
+
+cd /tmp && git clone https://github.com/sagemath/git-trac-command.git && cd git-trac-command && sudo setup.py install && rm -rf /tmp/git-trac-command
+
+
+# HORRIBLE STUFF
+
+Modified some code in axes3d.py in here:
+
+    salvus@compute1-us:/projects/sage/sage-6.7/local/lib/python2.7/site-packages/mpl_toolkits
+
+    self._draw_grid = False if b == "off" else bool(b)
+    #self._draw_grid = cbook._string_to_bool(b)
+
 """
 
 TINC_VERSION       = '1.0.25'    # options here -- http://tinc-vpn.org/packages/
@@ -403,7 +405,7 @@ PYTHON_VERSION     = '2.7.9'     # options here -- https://www.python.org/ftp/py
 SETUPTOOLS_VERSION = '15.2'      # options here (bottom!) -- https://pypi.python.org/pypi/setuptools
 NGINX_VERSION      = '1.7.10'    # options here -- http://nginx.org/download/
 HAPROXY_VERSION    = '1.5.11'    # options here -- http://www.haproxy.org/download/
-STUNNEL_VERSION    = '5.10'      # options here -- https://www.stunnel.org/downloads.html
+STUNNEL_VERSION    = '5.17'      # options here -- https://www.stunnel.org/downloads.html
 GDAL_VERSION       = '1.11.2'    # options here -- http://download.osgeo.org/gdal/?C=M;O=D
 
 import logging, os, shutil, subprocess, sys, time, urllib2
@@ -542,8 +544,10 @@ SAGE_PIP_PACKAGES = [
     'goslate',    # google translate api -- http://pythonhosted.org/goslate/
     'certifi',    # dependency of https://github.com/obspy, which is installed systemwide from an ubuntu package repo
     'ez_setup',   # needed by fipy
-    'pyparse',    # needed by fipy
+    #'pysparse',    # needed by fipy; for the ==1.2-dev213 bullshit, see http://stackoverflow.com/questions/25459011/how-to-build-pysparse-on-ubuntu; it's amazing how bad pypi and python packaging are.  Wow.
     'fipy',       # requested by Evan Chenelly <echenelly@gmail.com> -- "A finite volume PDE solver in Python".
+                  # to get it to build had to instead download directly and comment out these lines from setup.py
+                  # #import ez_setup; ez_setup.use_setuptools()
     'python-igraph', # requested by Santhust <santhust31@gmail.com> -- "High performance graph data structures and algorithms" -- https://pypi.python.org/pypi/python-igraph/0.7
     'mygene',   # requested by Luca Beltrame for a bioinformatics course
     'singledispatch',  # needed by rpy2 ipython extension now
@@ -562,7 +566,7 @@ SAGE_PIP_PACKAGES = [
     'seaborn',
     'brewer2mpl',
     'ggplot',
-    'periodictable'
+    'periodictable',
     'nltk',
     'param',
     'holoviews',
@@ -571,7 +575,11 @@ SAGE_PIP_PACKAGES = [
     'FXrays',
     'snappy',
     'twitter',
-    'bayespy'
+    'bayespy',
+    'astropy',
+    'aplpy',
+    'PyDSTool',
+    'progressbar'  # requested by David Lisbonne
     ]
 
 SAGE_PIP_PACKAGES_ENV = {'clawpack':{'LDFLAGS':'-shared'}}
@@ -608,7 +616,8 @@ R_PACKAGES = [
     'psych',
     'spatstat',
     'UsingR',
-    'readr'
+    'readr',
+    'MCMCpack'
 ]
 
 SAGE_OPTIONAL_PACKAGES = [
@@ -748,7 +757,7 @@ class BuildSage(object):
         self.patch_sage_env()
         self.install_sloane()
         self.install_projlib()
-        self.install_pip()
+        #self.install_pip()   # comes with sage>=6.7 now.
         self.install_pip_packages()
         self.install_jinja2() # since sage's is too old and pip packages doesn't upgrade
         self.install_R_packages()
@@ -769,7 +778,7 @@ class BuildSage(object):
         self.extend_sys_path()
         self.fix_permissions()
 
-        self.octave_ext()  # requires ZFS
+        self.sage_ext()  # requires ZFS
         self.install_ipython_patch()  # must be done manually still
 
         # drepecated
@@ -778,7 +787,7 @@ class BuildSage(object):
 
         # FAILED:
         self.install_pymc()     # FAIL -- also "pip install pymc" fails.
-        self.install_rstan()    # FAIL -- ERROR: dependency StanHeaders is not available for package rstan
+        self.install_rstan()
 
     def install_sage_manifolds(self):
         # TODO: this will probably fail due to an interactive merge request (?)
@@ -786,7 +795,7 @@ class BuildSage(object):
 
     def install_r_jupyter_kernel(self):
         # see https://github.com/IRkernel/IRkernel
-        self.cmd(r"""echo 'install.packages("devtools", repos="http://ftp.osuosl.org/pub/cran/"); install.packages("RCurl", repos="http://ftp.osuosl.org/pub/cran/"); install.packages("base64enc", repos="http://ftp.osuosl.org/pub/cran/"); install.packages("uuid", repos="http://ftp.osuosl.org/pub/cran/"); library(devtools); install_github("armstrtw/rzmq"); install_github("IRkernel/IRdisplay"); install_github("IRkernel/IRkernel");' | R --no-save""")
+        self.cmd(r"""echo 'install.packages("devtools", repos="http://ftp.osuosl.org/pub/cran/"); install.packages("RCurl", repos="http://ftp.osuosl.org/pub/cran/"); install.packages("base64enc", repos="http://ftp.osuosl.org/pub/cran/"); install.packages("uuid", repos="http://ftp.osuosl.org/pub/cran/"); library(devtools); install_github("armstrtw/rzmq"); install_github("IRkernel/repr"); install_github("IRkernel/IRdisplay"); install_github("IRkernel/IRkernel");' | R --no-save""")
 
     def pull_smc_sage(self):
         self.cmd("cd $SAGE_ROOT && git pull https://github.com/sagemathinc/smc-sage")
@@ -945,6 +954,13 @@ class BuildSage(object):
         os.environ['PROJ_DIR']=os.environ['NETCDF4_DIR']=os.environ['HDF5_DIR']='/usr/'
         os.environ['C_INCLUDE_PATH']='/usr/lib/openmpi/include'
 
+        os.environ['HDF5_DIR']='/usr/lib/x86_64-linux-gnu/hdf5/serial/'  # needed for tables -- right path at least for ubuntu 15.04
+        # for these, see https://github.com/Unidata/netcdf4-python/issues/341
+        os.environ['USE_NCCONFIG']='0'
+        os.environ['HDF5_LIBDIR']='/usr/lib/x86_64-linux-gnu/hdf5/serial'
+        os.environ['HDF5_INCDIR']='/usr/include/hdf5/serial'
+        os.environ['NETCDF4_DIR']='/usr'
+
         for package in SAGE_PIP_PACKAGES:
             log.info("** Installing/upgrading %s **"%package)
             # NOTE: the "--no-deps" is critical below; otherwise, pip will do things like install a version of numpy that is
@@ -963,15 +979,18 @@ class BuildSage(object):
 
     def install_rstan(self):
         """
-        Install the R stan pain-to-install package into R.
+        Install the Rstan pain-to-install package into R.
         See the following for why/how
             https://github.com/stan-dev/rstan/wiki/RStan-Getting-Started
             https://github.com/stan-dev/stan/tree/master
             https://groups.google.com/forum/#!topic/stan-users/Qbkuu51QZvU
         """
-        self.cmd(r"""echo 'install.packages(c("inline", "BH", "RcppEigen", "Rcpp"), repos="http://cran.cs.wwu.edu/")' | R --no-save && cd /tmp && rm -rf rstan && git clone --recursive https://github.com/stan-dev/rstan.git && cd rstan/rstan && echo 'CXXFLAGS = -O2 $(LTO)' > R_Makevars && make install && rm -rf /tmp/rstan""")
+        self.cmd(r"""echo 'install.packages(c("inline", "BH", "RcppEigen", "Rcpp", "RInside"), repos="http://cran.cs.wwu.edu/")' | R --no-save && cd /tmp && rm -rf rstan && git clone --recursive https://github.com/stan-dev/rstan.git && cd rstan/rstan && echo 'CXXFLAGS = -O2 $(LTO)' > R_Makevars && make install && rm -rf /tmp/rstan""")
 
     def install_pystan(self):
+        # follow directions here: https://github.com/stan-dev/rstan/wiki/RStan-Getting-Started#how-to-install-rstan
+        # this doesn't work anymore
+        raise RuntimeError('do it by hand')
         self.cmd(r"""cd /tmp && rm -rf pystan && git clone --recursive https://github.com/stan-dev/pystan.git && cd pystan && python setup.py install && rm -rf /tmp/pystan""")
 
     def install_optional_packages(self, skip=[]):
@@ -1013,7 +1032,7 @@ class BuildSage(object):
 
     def install_quantlib(self):
         # See http://sourceforge.net/projects/quantlib/
-        VERSION = "1.4"
+        VERSION = "1.5"
         try:
             # check if already installed
             import QuantLib
