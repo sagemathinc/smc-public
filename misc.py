@@ -24,7 +24,7 @@
 Miscellaneous functions.
 """
 
-import os, sha
+import os, hashlib
 
 ##########################################################################
 # Connecting to HTTP url's.
@@ -228,4 +228,4 @@ def thread_map(callable, inputs):
 # sha-1 hash
 ################################################
 def sha1(s):
-    return sha.sha(s).hexdigest()
+    return hashlib.sha1(s).hexdigest()
